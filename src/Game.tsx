@@ -99,26 +99,53 @@ const adjacencyMap: Record<number, number[]> = {
 };
 
 type GamePhase = "placement" | "movement" | "removal" | "flying";
-type Player = "X" | "O";
+type Player = "X" | "O" ;
 
+const movementPhase: (Player | null)[] = [
+    "X",
+    null,
+    null,
+    null,
+    null,
+    "O",
+    null,
+    null,
+    "O",
+    null,
+    "X",
+    null,
+    null,
+    "O",
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    "X",
+    null,
+    "O"
+];
+ 
 export default function Game() {
     const [moves, setMoves] = useState(Array(24).fill(null));
+    // const [moves, setMoves] = useState<(Player | null)[]>(movementPhase);
     const [playerXMoves, setPlayerXMoves] = useState(0);
     const [playerOMoves, setPlayerOMoves] = useState(0);
     const [gamePhase, setGamePhase] = useState<GamePhase>("placement");
     const [previousGamePhase, setPreviousGamePhase] = useState<GamePhase | null>(null);
-    const [selectedPieceIndex, setSelectedPieceIndex] = useState<number | null>(
-        null
-    );
+    const [selectedPieceIndex, setSelectedPieceIndex] = useState<number | null>(null);
     const [currentPlayer, setCurrentPlayer] = useState<Player>("X");
     const [currentRemover, setCurrentRemover] = useState<null | Player>(null);
+    const [currentFlying, setCurrentFlying] = useState<{ X: boolean; O: boolean }>({ X: false, O: false });
     const removalOpponent = currentRemover === "O" ? "X" : "O";
 
     const isAdjacent = (from: number, to: number): boolean => {
         return adjacencyMap[from]?.includes(to);
     };
 
-    const checkForMill = (index: number, player: Player | null,moves: (null | Player)[]) => {
+    const checkForMill = (index: number, player: Player | null, moves: (null | Player)[]) => {
         return mills.some((mill) => {
         const isInMill = mill.includes(index);
         const allMatch = mill.every((i) => moves[i] === player);
@@ -127,60 +154,10 @@ export default function Game() {
     };
 
     const updateGamePhase = (newPhase: GamePhase) => {
-        console.log(newPhase);
-        console.log('wow')
-        setPreviousGamePhase(gamePhase); // Store the current phase as the previous phase
-        setGamePhase(newPhase); // Update to the new phase
+        setPreviousGamePhase(gamePhase); 
+        setGamePhase(newPhase); 
     };
 
-    const movePiece = (index: number) => {
-        if (selectedPieceIndex === null) {
-            // First click  - select a piece to move
-            if (moves[index] === currentPlayer) {
-                setSelectedPieceIndex(index);
-            } 
-            if (moves[index] !== null && moves[index] !== currentPlayer) {
-                alert("Not Your Piece! Choose your own piece.");
-            } 
-            return;
-        }
-
-        // Second click - attempt to move
-        if (moves[index] !== null) {
-            // You clicked on an occupied space, reset selection
-            setSelectedPieceIndex(null);
-            alert("Invalid move. Choose an empty point.");
-            return;
-        }
-
-        const validMove = isAdjacent(selectedPieceIndex, index); // check if move is valid
-
-        if (!validMove) {
-            alert("Invalid move. Choose an adjacent point.");
-            setSelectedPieceIndex(null);
-            return;
-        }
- 
-        // const allPlaced = moves.filter((move) => move !== null).length === 9;
-        const updatedMoves = [...moves];
-        updatedMoves[selectedPieceIndex] = null; // remove from old
-        updatedMoves[index] = currentPlayer; // place on new
-
-        setMoves(updatedMoves);
-        setSelectedPieceIndex(null);
-
-        const formedMill = checkForMill(index, currentPlayer, updatedMoves);
-
-        if (formedMill) {
-            setCurrentRemover(currentPlayer === "X" ? "O" : "X");
-            setCurrentPlayer(currentPlayer === "X" ? "O" : "X");
-            
-            updateGamePhase("removal");
-            alert(`🟢 Jucătorul ${currentPlayer} a făcut o MOARĂ!`);
-            return;
-        }
-        setCurrentPlayer(currentPlayer === "X" ? "O" : "X");
-    };
 
     const removePiece = (index: number) => {
         if (moves[index] === currentRemover) {
@@ -215,32 +192,6 @@ export default function Game() {
             }
         }
     };
-
-    const determineGamePhase = (updatedMoves: (null | Player)[]) => {
-        const playerCounts = updatedMoves.reduce(
-            (counts, move) => {
-                if (move === "X") counts.X++;
-                if (move === "O") counts.O++;
-                return counts;
-            },
-            { X: 0, O: 0 }
-        );
-        
-        // flying
-        if ((playerCounts.X === 3 || playerCounts.O === 3) && gamePhase === "movement") {
-            setGamePhase("flying");
-            console.log("Flying phase triggered");
-            return;
-        }
-        
-        console.log(playerXMoves, playerOMoves);
-        // movement
-        if (playerXMoves === 9 && playerOMoves === 9 && gamePhase === "placement") {
-            alert('wow')
-            setGamePhase("movement");
-            return;
-        }
-    };
     
     const addPiece = (index: number) => {
         if (moves[index] !== null) return;
@@ -249,7 +200,6 @@ export default function Game() {
         updatedMoves[index] = currentPlayer;
 
         currentPlayer === "X" ? setPlayerXMoves(move => move + 1) : setPlayerOMoves(move => move + 1);
-        console.log(currentPlayer)
         setMoves(updatedMoves);
 
         if (checkForMill(index, currentPlayer, updatedMoves)) {
@@ -263,30 +213,127 @@ export default function Game() {
         setCurrentPlayer(currentPlayer === "X" ? "O" : "X");
     };
     
-    const flyingPiece = (index: number) => {
-        console.log("Flying piece", index);
+    const movePiece = (index: number) => {
+        if (selectedPieceIndex === null) {
+            // First click  - select a piece to move
+            if (moves[index] === currentPlayer) {
+                setSelectedPieceIndex(index);
+            } 
+
+            if (moves[index] !== null && moves[index] !== currentPlayer) {
+                alert("Not Your Piece! Choose your own piece.");
+            } 
+
+            return;
+        }
+
+        // Second click - attempt to move
+        if (moves[index] !== null) {
+            // You clicked on an occupied space, reset selection
+            setSelectedPieceIndex(null);
+            alert("Invalid move. Choose an empty point.");
+            return;
+        }
+
+        // only for flying phase
+        if (currentFlying[currentPlayer] === false) {
+            const validMove = isAdjacent(selectedPieceIndex, index); // check if move is valid
+
+            if (!validMove) {
+                alert("Invalid move. Choose an adjacent point.");
+                setSelectedPieceIndex(null);
+                return;
+            }
+        }
+
+        const updatedMoves = [...moves];
+        updatedMoves[selectedPieceIndex] = null; // remove from old
+        updatedMoves[index] = currentPlayer; // place on new
+
+        setMoves(updatedMoves);
+        setSelectedPieceIndex(null);
+
+        const formedMill = checkForMill(index, currentPlayer, updatedMoves);
+
+        if (formedMill) {
+            setCurrentRemover(currentPlayer === "X" ? "O" : "X");
+            setCurrentPlayer(currentPlayer === "X" ? "O" : "X");
+            
+            updateGamePhase("removal");
+            alert(`🟢 Jucătorul ${currentPlayer} a făcut o MOARĂ!`);
+            return;
+        }
+        setCurrentPlayer(currentPlayer === "X" ? "O" : "X");
     }
 
-    const handleClick = (index: number) => {
-        // determineGamePhase(moves);
+    const resetGame = () => {
+        alert("Game Over! Resetting the game.");
+        setMoves(Array(24).fill(null));
+        setPlayerXMoves(0);
+        setPlayerOMoves(0);
+        setGamePhase("placement");
+        setCurrentPlayer("X");
+        setCurrentRemover(null);
+        setCurrentFlying({ X: false, O: false });
+        setSelectedPieceIndex(null);
+        setPreviousGamePhase(null);
+    }
+
+    const determineGamePhase = (moves: (null | Player)[]) => {
+        const playerCounts = moves.reduce(
+            (counts, move) => {
+                if (move === "X") counts.X++;
+                if (move === "O") counts.O++;
+                return counts;
+            },
+            { X: 0, O: 0 }
+        );
+
+        if (playerCounts.X === 2 && gamePhase === "flying") {
+            resetGame();
+        }
+
+        if (playerCounts.O === 2 && gamePhase === "flying") {
+            resetGame();
+        }
+
+        // flying
+        if ((playerCounts.X === 3 || playerCounts.O === 3) && gamePhase === "movement") {
+            setGamePhase("flying");
+            setCurrentFlying({ X: playerCounts.X === 3, O: playerCounts.O === 3 });
+            return;
+        }
+
+        if ((playerCounts.X === 3 || playerCounts.O === 3) && gamePhase === "flying") {
+            setCurrentFlying({ X: playerCounts.X === 3, O: playerCounts.O === 3 });
+            return;
+        }
         
+        // movement
+        if (playerXMoves === 9 && playerOMoves === 9 && gamePhase === "placement") {
+            setGamePhase("movement");
+            return;
+        }
+    };
+
+    const handleClick = (index: number) => {
         if (gamePhase == "removal") {
             removePiece(index);
         } else if (gamePhase == "placement") {
             addPiece(index);
-        } else if (gamePhase == "movement") {
+        } else if (gamePhase == "movement" || gamePhase == "flying") {
             movePiece(index);
-        } else if (gamePhase == "flying") {
-            flyingPiece(index);
-        }
+        } 
     };
 
     useEffect(() => {
         determineGamePhase(moves);
+        console.log("useEffect triggered");
+        console.log(moves)
     }, [playerOMoves, playerOMoves, moves]);
 
     return (
-        <Grid container >
+        <Grid container>
             <Grid size={{ xs: 12, lg: 10 }}>
                 <svg viewBox="0 0 500 500" width="100%" height="95vh">
                 <defs>
@@ -457,7 +504,6 @@ export default function Game() {
                 ))}
                 </svg>
             </Grid>
-
             <Grid
                 size={{ xs: 12, lg: 2 }}
                 sx={{
@@ -474,7 +520,7 @@ export default function Game() {
 
                 <Divider sx={{ borderColor: "#555", my: 2 }} />
 
-                <Grid >
+                <Grid container>
                     <Grid size={{ xs: 12, lg: 12 }}>
                         <Typography variant="h6" sx={{ mt: 2 }}>
                         GamePhase: {gamePhase}
@@ -487,17 +533,15 @@ export default function Game() {
                         </Typography>
                         <Typography variant="body2">
                             Pieces Placed: {playerXMoves} / 9
-                            <br/>
-                            Pieces Moved: {playerXMoves} / 9
                         </Typography>
-                    </Grid><Grid size={{ xs: 12, lg: 6 }}>
+                    </Grid>
+
+                    <Grid size={{ xs: 12, lg: 6 }}>
                         <Typography variant="subtitle1" color="skyblue">
                             🔵 Player O
                         </Typography>
                         <Typography variant="body2">
                             Pieces Placed: {playerOMoves} / 9
-                            <br/>
-                            Pieces Moved: {playerOMoves} / 9
                         </Typography>
                     </Grid>
                 </Grid>
@@ -522,6 +566,17 @@ export default function Game() {
 
                     CurrentRemover: {currentRemover}
                 </Typography>
+
+                {currentFlying.X && (
+                    <Typography variant="body2" sx={{ mt: 2 }} color="red"> 
+                        Player X can fly!
+                    </Typography>
+                )}
+                {currentFlying.O && (
+                    <Typography variant="body2" sx={{ mt: 2 }} color="blue"> 
+                        Player O can fly!
+                    </Typography>
+                )}
             </Grid>
         </Grid>
     );
