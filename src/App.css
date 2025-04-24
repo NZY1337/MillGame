@@ -1,0 +1,33 @@
+.App {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+  }
+  
+  .lightning-line {
+    fill: none;
+    stroke: #00ffff;
+    stroke-width: 6;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    stroke-dasharray: 20;
+    animation: dash 0.3s linear infinite, glow 1s ease-in-out infinite alternate;
+  }
+  
+  @keyframes dash {
+    to {
+      stroke-dashoffset: 60;
+    }
+  }
+  
+  @keyframes glow {
+    from {
+      stroke: #00ffff;
+      filter: drop-shadow(0 0 6px #00ffff);
+    }
+    to {
+      stroke: #ffffff;
+      filter: drop-shadow(0 0 12px #ffffff);
+    }
+  }
+  
