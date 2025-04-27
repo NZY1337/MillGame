@@ -133,11 +133,11 @@ const movementPhase: (Player | null)[] = [
 ];
  
 export default function Game() {
-    // const [moves, setMoves] = useState(Array(24).fill(null));
-    const [moves, setMoves] = useState<(Player | null)[]>(movementPhase)
+    const [moves, setMoves] = useState(Array(24).fill(null));
+    // const [moves, setMoves] = useState<(Player | null)[]>(movementPhase)
     const [playerXMoves, setPlayerXMoves] = useState(0);
     const [playerOMoves, setPlayerOMoves] = useState(0);
-    const [gamePhase, setGamePhase] = useState<GamePhase>("movement");
+    const [gamePhase, setGamePhase] = useState<GamePhase>("placement");
     const [previousGamePhase, setPreviousGamePhase] = useState<GamePhase | null>(null);
     const [selectedPieceIndex, setSelectedPieceIndex] = useState<number | null>(null);
     const [currentPlayer, setCurrentPlayer] = useState<Player>("X");
@@ -182,13 +182,9 @@ export default function Game() {
         if (moves[index] === currentRemover) {
             const isInMill = checkForMill(index, currentRemover, moves);
 
-            const opponentPieces = moves
-                .map((v, i) => ({ v, i }))
-                .filter(({ v }) => v === currentRemover);
+            const opponentPieces = moves.map((v, i) => ({ v, i })).filter(({ v }) => v === currentRemover);
 
-            const allInMill = opponentPieces.every(({ i }) =>
-                mills.some(
-                (mill) =>
+            const allInMill = opponentPieces.every(({ i }) => mills.some( (mill) =>
                     mill.includes(i) && mill.every((m) => moves[m] === currentRemover)
                 )
             );
@@ -253,6 +249,11 @@ export default function Game() {
 
         // Second click - attempt to move
         if (moves[index] !== null) {
+            if (selectedPieceIndex === index) {
+                console.log('same index')
+                setSelectedPieceIndex(null);
+                return;
+            }
             // You clicked on an occupied space, reset selection
             setSelectedPieceIndex(null);
             basicNotify("Invalid move. Choose an empty point")
@@ -394,8 +395,17 @@ export default function Game() {
                         </filter>
 
                         <clipPath id="clip">
-                        <rect x="0" y="0" width="500" height="500" rx="5" ry="5" />
+                            <rect x="0" y="0" width="500" height="500" rx="5" ry="5" />
                         </clipPath>
+
+                        <linearGradient id="grad1" x1="0%" y1="0%" x2="0%" y2="100%">
+                            <stop offset="0%" style={{ stopColor: "#00f", stopOpacity: 1 }} />
+                            <stop offset="100%" style={{ stopColor: "#0ff", stopOpacity: 1 }} />
+                        </linearGradient>
+
+                        <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+                            <feDropShadow dx="0" dy="0" stdDeviation="4" floodColor="cyan" />
+                        </filter>
                     </defs>
 
                     <image
