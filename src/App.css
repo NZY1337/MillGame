@@ -17,6 +17,51 @@
     stroke-dasharray: 20;
     animation: dash 0.3s linear infinite, glow 1s ease-in-out infinite alternate;
   }
+
+  .board-piece {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 30% 30%, #e74c3c, #c0392b);
+    box-shadow:
+      inset 2px 2px 5px rgba(255, 255, 255, 0.2),
+      inset -2px -2px 5px rgba(0, 0, 0, 0.4),
+      0 0 4px rgba(0, 0, 0, 0.5);
+    border: 2px solid #922b21;
+    transition: all 0.2s ease;
+  }
+  
+  .board-piece.blue {
+    background: radial-gradient(circle at 30% 30%, #3498db, #2c3e50);
+    border-color: #1f2d3a;
+  }
+  
+  .board-piece.glow {
+    box-shadow:
+      0 0 10px 4px rgba(0, 255, 255, 0.6),
+      inset 2px 2px 5px rgba(255, 255, 255, 0.2),
+      inset -2px -2px 5px rgba(0, 0, 0, 0.4);
+  }
+  
+  @keyframes glow-move {
+    0% {
+      box-shadow: 0 0 10px #0ff, 0 0 20px #0ff;
+    }
+    50% {
+      box-shadow: 0 0 20px #0ff, 0 0 40px #0ff;
+    }
+    100% {
+      box-shadow: 0 0 10px #0ff, 0 0 20px #0ff;
+    }
+  }
+
+
+  .glow-moving {
+    border: 2px solid #0ff;
+    border-radius: 10px;
+    background-color: #111;
+    animation: glow-move 2s infinite ease-in-out;
+  }
   
   @keyframes dash {
     to {
