@@ -1,9 +1,13 @@
 import { useState, useEffect } from "react";
-import { Grid, Paper, Typography, Divider, Box, Stack } from "@mui/material";
+import { Grid, Paper, Typography, Divider, } from "@mui/material";
 import { ToastContainer, toast } from 'react-toastify';
-import clickSound from "./assets/sounds/click.wav";
-import removeSound from "./assets/sounds/remove.wav";
-import millSound from "./assets/sounds/mill.wav";
+import Box from '@mui/material/Box';
+import Stack from '@mui/material/Stack';
+import Slider from '@mui/material/Slider';
+import VolumeDown from '@mui/icons-material/VolumeDown';
+import VolumeUp from '@mui/icons-material/VolumeUp';
+
+import { audioManager } from "./utils";
 import "./App.css";
 
 // www.youtube.com/watch?v=h3rvUfbPjTc
@@ -143,6 +147,17 @@ export default function Game() {
     const [currentPlayer, setCurrentPlayer] = useState<Player>("X");
     const [currentRemover, setCurrentRemover] = useState<null | Player>(null);
     const [currentFlying, setCurrentFlying] = useState<{ X: boolean; O: boolean }>({ X: false, O: false });
+    const [isMuted, setIsMuted] = useState<boolean>(false);
+    const [volume, setVolume] = useState<number>(100);
+
+    const toggleMute = () => {
+        setIsMuted((prev) => !prev);
+    };
+
+    const handleChangeVolume = (event: Event, newValue: number) => {
+        setVolume(newValue); // Update React state
+        audioManager.setVolume(newValue); // Update AudioManager volume
+    };
 
     const gameOverNotify = () => toast.error("Game Over! Resetting the game");
     const millNotify = (player: Player) => toast.success(`Jucătorul ${player} a făcut o MOARĂ!`);
@@ -196,9 +211,6 @@ export default function Game() {
                 setMoves(updatedMoves);
                 setCurrentRemover(null);
 
-                const audio = new Audio(removeSound);
-                audio.play();
-
                 if (previousGamePhase) {
                     updateGamePhase(previousGamePhase);
                 }
@@ -221,8 +233,7 @@ export default function Game() {
         setMoves(updatedMoves);
 
         if (checkForMill(index, currentPlayer, updatedMoves)) {
-            const audio = new Audio(millSound);
-            audio.play();
+            audioManager.play("mill", isMuted);
             millNotify(currentPlayer);
 
             // when in MILL - game phase :: removal
@@ -281,14 +292,13 @@ export default function Game() {
         const formedMill = checkForMill(index, currentPlayer, updatedMoves);
 
         if (formedMill) {
-            const audio = new Audio(millSound);
-            audio.play();
+            audioManager.play("mill", isMuted);
+            millNotify(currentPlayer);
 
             setCurrentRemover(currentPlayer === "X" ? "O" : "X");
             setCurrentPlayer(currentPlayer === "X" ? "O" : "X");
             
             updateGamePhase("removal");
-            millNotify(currentPlayer);
             return;
         }
         setCurrentPlayer(currentPlayer === "X" ? "O" : "X");
@@ -333,17 +343,16 @@ export default function Game() {
     };
 
     const handleClick = (index: number) => {
-        if (gamePhase == "removal") {
+        if (gamePhase === "removal") {
+            audioManager.play("remove", isMuted);
             removePiece(index);
-        } else if (gamePhase == "placement") {
-            const audio = new Audio(clickSound);
-            audio.play();
+        } else if (gamePhase === "placement") {
+            audioManager.play("click", isMuted);
             addPiece(index);
-        } else if (gamePhase == "movement" || gamePhase == "flying") {
-            const audio = new Audio(clickSound);
-            audio.play();
+        } else if (gamePhase === "movement" || gamePhase === "flying") {
+            audioManager.play("click", isMuted);
             movePiece(index);
-        } 
+        }
     };
 
     useEffect(() => {
@@ -352,6 +361,106 @@ export default function Game() {
 
     return (
         <Grid container>
+            <Grid
+                size={{ xs: 12, lg: 2 }}
+                component={Paper}
+                elevation={4}
+                sx={{
+                    bgcolor: "#1c1c1e",
+                    borderRadius: 4,
+                    p: 3,
+                    color: "#fff",
+                    boxShadow: "0px 4px 20px rgba(0,0,0,0.5)",
+                }}>
+                <Stack spacing={2}>
+                    <Typography variant="h5" fontWeight="bold">
+                    🎮 Game Stats
+                    </Typography>
+
+                    <Divider sx={{ borderColor: "#444" }} />
+
+                    <Typography variant="body1">
+                    <strong>Game Phase:</strong> {gamePhase}
+                    </Typography>
+
+                    <Grid container spacing={2}>
+                    <Grid >
+                        <Box
+                        p={2}
+                        borderRadius={2}
+                        bgcolor="#2a2a2a"
+                        border="1px solid #444"
+                        >
+                        <Typography
+                            variant="subtitle1"
+                            sx={{ color: "#e63946", fontWeight: 600 }}
+                        >
+                            🔴 Player X
+                        </Typography>
+                        <Typography variant="body2">Pieces Placed: {playerXMoves} / 9</Typography>
+                        </Box>
+                    </Grid>
+
+                    <Grid >
+                        <Box
+                            p={2}
+                            borderRadius={2}
+                            bgcolor="#2a2a2a"
+                            border="1px solid #444"
+                        >
+                        <Typography
+                            variant="subtitle1"
+                            sx={{ color: "#1d3557", fontWeight: 600 }}
+                        >
+                            🔵 Player O
+                        </Typography>
+                        <Typography variant="body2">Pieces Placed: {playerOMoves} / 9</Typography>
+                        </Box>
+                    </Grid>
+                    </Grid>
+
+                    <Divider sx={{ borderColor: "#444" }} />
+
+                    <Typography variant="body1">
+                        <strong>Current Turn:</strong>{" "}
+                        {currentPlayer === "X" ? "🔴 Player X" : "🔵 Player O"}
+                    </Typography>
+
+                    <button
+                        onClick={toggleMute}
+                        style={{
+                            padding: "10px 20px",
+                            backgroundColor: "#444",
+                            color: "#fff",
+                            border: "none",
+                            borderRadius: "5px",
+                            cursor: "pointer",
+                        }}
+                    >
+                        {isMuted ? "Unmute Sounds 🔊" : "Mute Sounds 🔇"}
+                    </button>
+
+                    <Box sx={{ width: 200 }}>
+                        <Stack spacing={2} direction="row" sx={{ alignItems: 'center', mb: 1 }}>
+                            <VolumeDown />
+                            <Slider aria-label="Volume" value={volume} onChange={handleChangeVolume} />
+                            <VolumeUp />
+                        </Stack>
+                        {volume}
+                    </Box>
+
+                    {currentFlying.X && (
+                        <Typography variant="body2" sx={{ mt: 2, color: "#e63946" }}>
+                            🚀 Player X can fly!
+                        </Typography>
+                    )}
+                    {currentFlying.O && (
+                        <Typography variant="body2" sx={{ mt: 2, color: "#1d3557" }}>
+                            🚀 Player O can fly!
+                        </Typography>
+                    )}
+                </Stack>
+            </Grid>
             <Grid size={{ xs: 12, lg: 10 }}>
                 <svg viewBox="0 0 500 500" width="100%" height="95vh">
                     <defs>
@@ -409,7 +518,7 @@ export default function Game() {
                     </defs>
 
                     <image
-                        href="https://images.pexels.com/photos/4004374/pexels-photo-4004374.jpeg"
+                        href="https://images.pexels.com/photos/963278/pexels-photo-963278.jpeg"
                         x="0"
                         y="0"
                         width="500"
@@ -484,165 +593,64 @@ export default function Game() {
                         strokeWidth="2"
                     />
                     {boardPoints.map(({ id, x, y }) => (
-                    <g key={id} onClick={() => handleClick(id)} style={{ cursor: "pointer" }}>
-                        {/* Empty point */}
-                        <circle
-                        cx={x}
-                        cy={y}
-                        r="15"
-                        fill="#000"
-                        stroke="#555"
-                        strokeWidth="1"
-                        />
-
-                        {/* Filled piece */}
-                        {moves[id] && (
-                        <>
+                        <g key={id} onClick={() => handleClick(id)} style={{ cursor: "pointer" }}>
+                            {/* Empty point */}
                             <circle
                             cx={x}
                             cy={y}
-                            r="11"
-                            fill={`url(#${moves[id] === "X" ? "redGradient" : "blueGradient"})`}
-                            stroke={
-                                selectedPieceIndex === id ? "#ffffff"  : currentRemover === moves[id] ? (() => {
-                                    const isInMill = mills.some(
-                                        (mill) =>
-                                        mill.includes(id) &&
-                                        mill.every((i) => moves[i] === moves[id])
-                                    );
-
-                                    const opponentPieces = moves.map((v, i) => ({ v, i })).filter(({ v }) => v === moves[id]);
-
-                                    const allInMill = opponentPieces.every(({ i }) => mills.some(
-                                        (mill) =>mill.includes(i) && mill.every((m) => moves[m] === moves[id]))
-                                    );
-
-                                    return !isInMill || allInMill ? "yellow" : undefined;
-                                    })()
-                                : undefined
-                            }
-                            strokeWidth="2"
-                            filter={
-                                selectedPieceIndex === id || currentRemover === moves[id]
-                                ? "url(#glow)"
-                                : "url(#inset-shadow)"
-                            }
+                            r="15"
+                            fill="#000"
+                            stroke="#555"
+                            strokeWidth="1"
                             />
 
-                            {/* Highlight dot (specular reflection look) */}
-                            <circle
-                            cx={x - 3}
-                            cy={y - 3}
-                            r="3"
-                            fill="white"
-                            opacity="0.3"
-                            />
-                        </>
-                        )}
-                    </g>
+                            {/* Filled piece */}
+                            {moves[id] && (
+                            <>
+                                <circle
+                                cx={x}
+                                cy={y}
+                                r="11"
+                                fill={`url(#${moves[id] === "X" ? "redGradient" : "blueGradient"})`}
+                                stroke={
+                                    selectedPieceIndex === id ? "#ffffff"  : currentRemover === moves[id] ? (() => {
+                                        const isInMill = mills.some(
+                                            (mill) =>
+                                            mill.includes(id) &&
+                                            mill.every((i) => moves[i] === moves[id])
+                                        );
+
+                                        const opponentPieces = moves.map((v, i) => ({ v, i })).filter(({ v }) => v === moves[id]);
+
+                                        const allInMill = opponentPieces.every(({ i }) => mills.some(
+                                            (mill) =>mill.includes(i) && mill.every((m) => moves[m] === moves[id]))
+                                        );
+
+                                        return !isInMill || allInMill ? "yellow" : undefined;
+                                        })()
+                                    : undefined
+                                }
+                                strokeWidth="2"
+                                filter={
+                                    selectedPieceIndex === id || currentRemover === moves[id]
+                                    ? "url(#glow)"
+                                    : "url(#inset-shadow)"
+                                }
+                                />
+
+                                {/* Highlight dot (specular reflection look) */}
+                                <circle
+                                cx={x - 3}
+                                cy={y - 3}
+                                r="3"
+                                fill="white"
+                                opacity="0.3"
+                                />
+                            </>
+                            )}
+                        </g>
                     ))}
                 </svg>
-            </Grid>
-            <Grid
-                component={Paper}
-                elevation={4}
-                sx={{
-                    bgcolor: "#1c1c1e",
-                    borderRadius: 4,
-                    p: 3,
-                    color: "#fff",
-                    boxShadow: "0px 4px 20px rgba(0,0,0,0.5)",
-                }}>
-                <Stack spacing={2}>
-                    <Typography variant="h5" fontWeight="bold">
-                    🎮 Game Stats
-                    </Typography>
-
-                    <Divider sx={{ borderColor: "#444" }} />
-
-                    <Typography variant="body1">
-                    <strong>Game Phase:</strong> {gamePhase}
-                    </Typography>
-
-                    <Grid container spacing={2}>
-                    <Grid >
-                        <Box
-                        p={2}
-                        borderRadius={2}
-                        bgcolor="#2a2a2a"
-                        border="1px solid #444"
-                        >
-                        <Typography
-                            variant="subtitle1"
-                            sx={{ color: "#e63946", fontWeight: 600 }}
-                        >
-                            🔴 Player X
-                        </Typography>
-                        <Typography variant="body2">Pieces Placed: {playerXMoves} / 9</Typography>
-                        </Box>
-                    </Grid>
-
-                    <Grid >
-                        <Box
-                            p={2}
-                            borderRadius={2}
-                            bgcolor="#2a2a2a"
-                            border="1px solid #444"
-                        >
-                        <Typography
-                            variant="subtitle1"
-                            sx={{ color: "#1d3557", fontWeight: 600 }}
-                        >
-                            🔵 Player O
-                        </Typography>
-                        <Typography variant="body2">Pieces Placed: {playerOMoves} / 9</Typography>
-                        </Box>
-                    </Grid>
-                    </Grid>
-
-                    <Divider sx={{ borderColor: "#444" }} />
-
-                    <Typography variant="body1">
-                        <strong>Current Turn:</strong>{" "}
-                        {currentPlayer === "X" ? "🔴 Player X" : "🔵 Player O"}
-                    </Typography>
-
-                    {/* <Box
-                        mt={1}
-                        px={2}
-                        py={1}
-                        borderRadius={2}
-                        bgcolor="#2f2f2f"
-                        fontSize="0.9rem"
-                        border="1px dashed #555"
-                    >
-                        {currentRemover && (
-                            <Typography variant="body2" sx={{ mb: 1 }}>
-                            <em>
-                                {removalOpponent} needs to remove {currentRemover}'s piece
-                            </em>
-                            </Typography>
-                        )}
-                        <Typography variant="caption">CurrentPlayer: {currentPlayer}</Typography>
-                            <br />
-                            <Typography variant="caption">
-                                RemovalOpponent: {removalOpponent}
-                            </Typography>
-                            <br />
-                        <Typography variant="caption">CurrentRemover: {currentRemover}</Typography>
-                    </Box> */}
-
-                    {currentFlying.X && (
-                        <Typography variant="body2" sx={{ mt: 2, color: "#e63946" }}>
-                            🚀 Player X can fly!
-                        </Typography>
-                    )}
-                    {currentFlying.O && (
-                        <Typography variant="body2" sx={{ mt: 2, color: "#1d3557" }}>
-                            🚀 Player O can fly!
-                        </Typography>
-                    )}
-                </Stack>
             </Grid>
             <ToastContainer></ToastContainer>
         </Grid>
