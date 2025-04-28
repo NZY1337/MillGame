@@ -1,7 +1,14 @@
 import { useState, useEffect } from "react";
-import { Box, Typography, Divider, Grid } from "@mui/material";
+import { Grid, Paper, Typography, Divider, } from "@mui/material";
+import { ToastContainer, toast } from 'react-toastify';
+import Box from '@mui/material/Box';
+import Stack from '@mui/material/Stack';
+import Slider from '@mui/material/Slider';
+import VolumeDown from '@mui/icons-material/VolumeDown';
+import VolumeUp from '@mui/icons-material/VolumeUp';
+
+import { audioManager } from "./utils";
 import "./App.css";
-import { unstable_batchedUpdates } from "react-dom";
 
 // www.youtube.com/watch?v=h3rvUfbPjTc
 
@@ -100,27 +107,80 @@ const adjacencyMap: Record<number, number[]> = {
 };
 
 type GamePhase = "placement" | "movement" | "removal" | "flying";
-type Player = "X" | "O";
+type Player = "X" | "O" ;
 
+const movementPhase: (Player | null)[] = [
+    "X",
+    null,
+    null,
+    null,
+    null,
+    "O",
+    null,
+    null,
+    "O",
+    null,
+    "X",
+    null,
+    null,
+    "O",
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    "X",
+    null,
+    "O"
+];
+ 
 export default function Game() {
     const [moves, setMoves] = useState(Array(24).fill(null));
-    const [currentIndex, setCurrentIndex] = useState<number | null>(null);
-    const [playerXAdds, setPlayerXAdds] = useState(0);
-    const [playerOAdds, setPlayerOAdds] = useState(0);
+    // const [moves, setMoves] = useState<(Player | null)[]>(movementPhase)
+    const [playerXMoves, setPlayerXMoves] = useState(0);
+    const [playerOMoves, setPlayerOMoves] = useState(0);
     const [gamePhase, setGamePhase] = useState<GamePhase>("placement");
-    const [endPlacementPhase, setEndPlacementPhase] = useState<boolean>(false); // players have finished their 9 moves
-    const [selectedPieceIndex, setSelectedPieceIndex] = useState<number | null>(
-        null
-    );
+    const [previousGamePhase, setPreviousGamePhase] = useState<GamePhase | null>(null);
+    const [selectedPieceIndex, setSelectedPieceIndex] = useState<number | null>(null);
     const [currentPlayer, setCurrentPlayer] = useState<Player>("X");
     const [currentRemover, setCurrentRemover] = useState<null | Player>(null);
-    const removalOpponent = currentRemover === "O" ? "X" : "O";
+    const [currentFlying, setCurrentFlying] = useState<{ X: boolean; O: boolean }>({ X: false, O: false });
+    const [isMuted, setIsMuted] = useState<boolean>(false);
+    const [volume, setVolume] = useState<number>(100);
+
+    const toggleMute = () => {
+        setIsMuted((prev) => !prev);
+    };
+
+    const handleChangeVolume = (event: Event, newValue: number) => {
+        setVolume(newValue); // Update React state
+        audioManager.setVolume(newValue); // Update AudioManager volume
+    };
+
+    const gameOverNotify = () => toast.error("Game Over! Resetting the game");
+    const millNotify = (player: Player) => toast.success(`Jucătorul ${player} a făcut o MOARĂ!`);
+    const basicNotify = (message: string) => toast.info(message);
+
+    const resetGame = () => {
+        gameOverNotify();
+        setMoves(Array(24).fill(null));
+        setPlayerXMoves(0);
+        setPlayerOMoves(0);
+        setGamePhase("placement");
+        setCurrentPlayer("X");
+        setCurrentRemover(null);
+        setCurrentFlying({ X: false, O: false });
+        setSelectedPieceIndex(null);
+        setPreviousGamePhase(null);
+    }
 
     const isAdjacent = (from: number, to: number): boolean => {
         return adjacencyMap[from]?.includes(to);
     };
 
-    const checkForMill = (index: number, player: Player | null,moves: (null | Player)[]) => {
+    const checkForMill = (index: number, player: Player | null, moves: (null | Player)[]) => {
         return mills.some((mill) => {
         const isInMill = mill.includes(index);
         const allMatch = mill.every((i) => moves[i] === player);
@@ -128,37 +188,99 @@ export default function Game() {
         });
     };
 
+    const updateGamePhase = (newPhase: GamePhase) => {
+        setPreviousGamePhase(gamePhase); 
+        setGamePhase(newPhase); 
+    };
 
+    const removePiece = (index: number) => {
+        if (moves[index] === currentRemover) {
+            const isInMill = checkForMill(index, currentRemover, moves);
+
+            const opponentPieces = moves.map((v, i) => ({ v, i })).filter(({ v }) => v === currentRemover);
+
+            const allInMill = opponentPieces.every(({ i }) => mills.some( (mill) =>
+                    mill.includes(i) && mill.every((m) => moves[m] === currentRemover)
+                )
+            );
+            
+            if (!isInMill || allInMill) {
+                const updatedMoves = [...moves];
+                updatedMoves[index] = null;
+                
+                setMoves(updatedMoves);
+                setCurrentRemover(null);
+
+                if (previousGamePhase) {
+                    updateGamePhase(previousGamePhase);
+                }
+
+                return;
+            } else {
+                basicNotify("Nu poți elimina o piesă din moară dacă există alte opțiuni!")
+                return;
+            }
+        }
+    };
+    
+    const addPiece = (index: number) => {
+        if (moves[index] !== null) return;
+        
+        const updatedMoves = [...moves];
+        updatedMoves[index] = currentPlayer;
+
+        currentPlayer === "X" ? setPlayerXMoves(move => move + 1) : setPlayerOMoves(move => move + 1);
+        setMoves(updatedMoves);
+
+        if (checkForMill(index, currentPlayer, updatedMoves)) {
+            audioManager.play("mill", isMuted);
+            millNotify(currentPlayer);
+
+            // when in MILL - game phase :: removal
+            updateGamePhase("removal");
+            setCurrentRemover(currentPlayer === "X" ? "O" : "X");
+        }
+
+        setCurrentPlayer(currentPlayer === "X" ? "O" : "X");
+    };
+    
     const movePiece = (index: number) => {
         if (selectedPieceIndex === null) {
             // First click  - select a piece to move
             if (moves[index] === currentPlayer) {
                 setSelectedPieceIndex(index);
             } 
+
             if (moves[index] !== null && moves[index] !== currentPlayer) {
-                alert("Not Your Piece! Choose your own piece.");
+                basicNotify("Not your turn!")
             } 
+
             return;
         }
 
         // Second click - attempt to move
         if (moves[index] !== null) {
+            if (selectedPieceIndex === index) {
+                console.log('same index')
+                setSelectedPieceIndex(null);
+                return;
+            }
             // You clicked on an occupied space, reset selection
             setSelectedPieceIndex(null);
-            alert("Invalid move. Choose an empty point.");
+            basicNotify("Invalid move. Choose an empty point")
             return;
         }
 
-        const validMove = isAdjacent(selectedPieceIndex, index); // check if move is valid
+        // only for flying phase
+        if (currentFlying[currentPlayer] === false) {
+            const validMove = isAdjacent(selectedPieceIndex, index); // check if move is valid
 
-        if (!validMove) {
-            alert("Invalid move. Choose an adjacent point.");
-            setSelectedPieceIndex(null);
-            return;
+            if (!validMove) {
+                basicNotify("Invalid move. Choose an adjacent point.")
+                setSelectedPieceIndex(null);
+                return;
+            }
         }
-
-        // const allPlaced = moves.filter((move) => move !== null).length === 9;
-        // console.log("All placed", allPlaced);
 
         const updatedMoves = [...moves];
         updatedMoves[selectedPieceIndex] = null; // remove from old
@@ -168,50 +290,22 @@ export default function Game() {
         setSelectedPieceIndex(null);
 
         const formedMill = checkForMill(index, currentPlayer, updatedMoves);
+
         if (formedMill) {
+            audioManager.play("mill", isMuted);
+            millNotify(currentPlayer);
+
             setCurrentRemover(currentPlayer === "X" ? "O" : "X");
             setCurrentPlayer(currentPlayer === "X" ? "O" : "X");
-
-            setGamePhase("removal");
-            alert(`🟢 Jucătorul ${currentPlayer} a făcut o MOARĂ!`);
+            
+            updateGamePhase("removal");
             return;
         }
         setCurrentPlayer(currentPlayer === "X" ? "O" : "X");
-    };
+    }
 
-    const removePiece = (index: number) => {
-        if (moves[index] === currentRemover) {
-            const isInMill = checkForMill(index, currentRemover, moves);
-
-            const opponentPieces = moves
-                .map((v, i) => ({ v, i }))
-                .filter(({ v }) => v === currentRemover);
-
-            const allInMill = opponentPieces.every(({ i }) =>
-                mills.some(
-                (mill) =>
-                    mill.includes(i) && mill.every((m) => moves[m] === currentRemover)
-                )
-            );
-
-            if (!isInMill || allInMill) {
-                const updatedMoves = [...moves];
-                updatedMoves[index] = null;
-                
-                setMoves(updatedMoves);
-                setCurrentRemover(null);
-
-                determineGamePhase(updatedMoves);
-                return;
-            } else {
-                alert("Nu poți elimina o piesă din moară dacă există alte opțiuni!");
-                return;
-            }
-        }
-    };
-
-    const determineGamePhase = (updatedMoves: (null | Player)[]) => {
-        const playerCounts = updatedMoves.reduce(
+    const determineGamePhase = (moves: (null | Player)[]) => {
+        const playerCounts = moves.reduce(
             (counts, move) => {
                 if (move === "X") counts.X++;
                 if (move === "O") counts.O++;
@@ -219,304 +313,346 @@ export default function Game() {
             },
             { X: 0, O: 0 }
         );
-     
-        if ((playerCounts.X === 3 || playerCounts.O === 3) && endPlacementPhase) {
+
+        if ((playerCounts.X === 2 && gamePhase === "flying") || (playerCounts.O === 2 && gamePhase === "flying")) {
+            console.log("Game Over! Resetting the game.");
+            resetGame();
+            return;
+        }
+
+        // flying
+        if ((playerCounts.X === 3 || playerCounts.O === 3) && gamePhase === "movement") {
             setGamePhase("flying");
-            console.log("Flying phase triggered");
-            return;
-        }
-    
-        if (playerXAdds === 9 && playerOAdds === 9) {
-            setEndPlacementPhase(true);
-            setGamePhase("movement");
+            console.log("wow1");
+            setCurrentFlying({ X: playerCounts.X === 3, O: playerCounts.O === 3 });
             return;
         }
 
-        const millOnLastMove = checkForMill(currentIndex!, removalOpponent, moves);
-        if (millOnLastMove) {
-            setGamePhase("removal");
-        } else {
+        if ((playerCounts.X === 3 || playerCounts.O === 3) && gamePhase === "flying") {
+            console.log("wow2");
+            setCurrentFlying({ X: playerCounts.X === 3, O: playerCounts.O === 3 });
+            return;
+        }
+        
+        // movement
+        if (playerXMoves === 9 && playerOMoves === 9 && gamePhase === "placement") {
+            console.log("wow3");
             setGamePhase("movement");
+            return;
         }
-    
-        setGamePhase("placement");
     };
-    
-    const addPiece = (index: number) => {
-        if (moves[index] !== null || endPlacementPhase) return;
-        
-        const updatedMoves = [...moves];
-        updatedMoves[index] = currentPlayer;
-
-        // eslint-disable-next-line @typescript-eslint/no-unused-expressions
-        currentPlayer === "X" ? setPlayerXAdds(move => move + 1) : setPlayerOAdds(move => move + 1);
-        
-        setMoves(updatedMoves);
-
-        if (checkForMill(index, currentPlayer, updatedMoves)) {
-            alert(`🟢 Jucătorul ${currentPlayer} a făcut o MOARĂ!`);
-            setGamePhase("removal");
-            setCurrentRemover(currentPlayer === "X" ? "O" : "X");
-        }
-
-        setCurrentPlayer(currentPlayer === "X" ? "O" : "X");
-    };
-    
-    const flyingPiece = (index: number) => {
-        console.log("Flying piece", index);
-    }
 
     const handleClick = (index: number) => {
-        setCurrentIndex(index);
-
-        if (gamePhase == "removal") {
+        if (gamePhase === "removal") {
+            audioManager.play("remove", isMuted);
             removePiece(index);
-        } else if (gamePhase == "placement") {
+        } else if (gamePhase === "placement") {
+            audioManager.play("click", isMuted);
             addPiece(index);
-        } else if (gamePhase == "movement") {
+        } else if (gamePhase === "movement" || gamePhase === "flying") {
+            audioManager.play("click", isMuted);
             movePiece(index);
-        } else if (gamePhase == "flying") {
-            flyingPiece(index);
         }
     };
 
+    useEffect(() => {
+        determineGamePhase(moves);
+    }, [playerOMoves, playerOMoves, moves]);
+
     return (
-        <Box sx={{ display: "flex", gap: 1 }}>
-        <Grid sx={{ display: "flex" }}>
-            <svg viewBox="0 0 500 500" width="100%" height="98vh">
-            <defs>
-                <filter id="shadow" x="-50%" y="-50%" width="200%" height="200%">
-                <feDropShadow
-                    dx="1"
-                    dy="1"
-                    stdDeviation="2"
-                    floodColor="#000"
-                    floodOpacity="0.4"
-                />
-                </filter>
+        <Grid container>
+            <Grid
+                size={{ xs: 12, lg: 2 }}
+                component={Paper}
+                elevation={4}
+                sx={{
+                    bgcolor: "#1c1c1e",
+                    borderRadius: 4,
+                    p: 3,
+                    color: "#fff",
+                    boxShadow: "0px 4px 20px rgba(0,0,0,0.5)",
+                }}>
+                <Stack spacing={2}>
+                    <Typography variant="h5" fontWeight="bold">
+                    🎮 Game Stats
+                    </Typography>
 
-                <clipPath id="clip">
-                <rect x="0" y="0" width="500" height="500" rx="5" ry="5" />
-                </clipPath>
-            </defs>
+                    <Divider sx={{ borderColor: "#444" }} />
 
-            <image
-                href="https://images.pexels.com/photos/4004374/pexels-photo-4004374.jpeg"
-                x="0"
-                y="0"
-                width="500"
-                height="500"
-                preserveAspectRatio="xMidYMid slice"
-                clipPath="url(#clip)"
-            />
+                    <Typography variant="body1">
+                    <strong>Game Phase:</strong> {gamePhase}
+                    </Typography>
 
-            <rect
-                x="50"
-                y="50"
-                width="400"
-                height="400"
-                stroke="black"
-                fill="none"
-                strokeWidth="2"
-            />
-            <rect
-                x="125"
-                y="125"
-                width="250"
-                height="250"
-                stroke="black"
-                fill="none"
-                strokeWidth="2"
-            />
-            <rect
-                x="200"
-                y="200"
-                width="100"
-                height="100"
-                stroke="black"
-                fill="none"
-                strokeWidth="2"
-            />
+                    <Grid container spacing={2}>
+                    <Grid >
+                        <Box
+                        p={2}
+                        borderRadius={2}
+                        bgcolor="#2a2a2a"
+                        border="1px solid #444"
+                        >
+                        <Typography
+                            variant="subtitle1"
+                            sx={{ color: "#e63946", fontWeight: 600 }}
+                        >
+                            🔴 Player X
+                        </Typography>
+                        <Typography variant="body2">Pieces Placed: {playerXMoves} / 9</Typography>
+                        </Box>
+                    </Grid>
 
-            <line
-                x1="250"
-                y1="50"
-                x2="250"
-                y2="200"
-                stroke="black"
-                strokeWidth="2"
-            />
-            
-            <line
-                x1="250"
-                y1="300"
-                x2="250"
-                y2="450"
-                stroke="black"
-                strokeWidth="2"
-            />
-            <line
-                x1="50"
-                y1="250"
-                x2="200"
-                y2="250"
-                stroke="black"
-                strokeWidth="2"
-            />
-            <line
-                x1="300"
-                y1="250"
-                x2="450"
-                y2="250"
-                stroke="black"
-                strokeWidth="2"
-            />
+                    <Grid >
+                        <Box
+                            p={2}
+                            borderRadius={2}
+                            bgcolor="#2a2a2a"
+                            border="1px solid #444"
+                        >
+                        <Typography
+                            variant="subtitle1"
+                            sx={{ color: "#1d3557", fontWeight: 600 }}
+                        >
+                            🔵 Player O
+                        </Typography>
+                        <Typography variant="body2">Pieces Placed: {playerOMoves} / 9</Typography>
+                        </Box>
+                    </Grid>
+                    </Grid>
 
-            {boardPoints.map(({ id, x, y }) => (
-                <g
-                key={id}
-                onClick={() => handleClick(id)}
-                style={{ cursor: "pointer" }}
-                >
-                <circle
-                    cx={x}
-                    cy={y}
-                    r="15"
-                    fill="#000"
-                    stroke="#555"
-                    strokeWidth="1"
-                    textRendering={id}
-                    filter="url(#shadow)"
-                />
-                {moves[id] && (
-                    <>
-                    <circle
-                        cx={x}
-                        cy={y}
-                        r="11"
-                        fill={moves[id] === "X" ? "#e63946" : "#1d3557"}
-                        filter="url(#shadow)"
-                        stroke={ 
-                        selectedPieceIndex === id
-                            ? "#fff"
-                            : currentRemover === moves[id]
-                            ? (() => {
-                                const isInMill = mills.some(
-                                (mill) =>
-                                    mill.includes(id) &&
-                                    mill.every((i) => moves[i] === moves[id])
-                                );
+                    <Divider sx={{ borderColor: "#444" }} />
 
-                                const opponentPieces = moves
-                                .map((v, i) => ({ v, i }))
-                                .filter(({ v }) => v === moves[id]);
+                    <Typography variant="body1">
+                        <strong>Current Turn:</strong>{" "}
+                        {currentPlayer === "X" ? "🔴 Player X" : "🔵 Player O"}
+                    </Typography>
 
-                                const allInMill = opponentPieces.every(({ i }) =>
-                                mills.some(
-                                    (mill) =>
-                                    mill.includes(i) &&
-                                    mill.every((m) => moves[m] === moves[id])
-                                )
-                                );
+                    <button
+                        onClick={toggleMute}
+                        style={{
+                            padding: "10px 20px",
+                            backgroundColor: "#444",
+                            color: "#fff",
+                            border: "none",
+                            borderRadius: "5px",
+                            cursor: "pointer",
+                        }}
+                    >
+                        {isMuted ? "Unmute Sounds 🔊" : "Mute Sounds 🔇"}
+                    </button>
 
-                                return !isInMill || allInMill
-                                ? "yellow"
-                                : undefined;
-                            })()
-                            : undefined
-                        }
+                    <Box sx={{ width: 200 }}>
+                        <Stack spacing={2} direction="row" sx={{ alignItems: 'center', mb: 1 }}>
+                            <VolumeDown />
+                            <Slider aria-label="Volume" value={volume} onChange={handleChangeVolume} />
+                            <VolumeUp />
+                        </Stack>
+                        {volume}
+                    </Box>
+
+                    {currentFlying.X && (
+                        <Typography variant="body2" sx={{ mt: 2, color: "#e63946" }}>
+                            🚀 Player X can fly!
+                        </Typography>
+                    )}
+                    {currentFlying.O && (
+                        <Typography variant="body2" sx={{ mt: 2, color: "#1d3557" }}>
+                            🚀 Player O can fly!
+                        </Typography>
+                    )}
+                </Stack>
+            </Grid>
+            <Grid size={{ xs: 12, lg: 10 }}>
+                <svg viewBox="0 0 500 500" width="100%" height="95vh">
+                    <defs>
+                        <radialGradient id="redGradient" cx="30%" cy="30%" r="70%">
+                            <stop offset="0%" stopColor="#f87171" />
+                            <stop offset="100%" stopColor="#b91c1c" />
+                        </radialGradient>
+
+                        <radialGradient id="blueGradient" cx="30%" cy="30%" r="70%">
+                            <stop offset="0%" stopColor="#60a5fa" />
+                            <stop offset="100%" stopColor="#1e3a8a" />
+                        </radialGradient>
+
+                        {/* Glow effect */}
+                        <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+                            <feGaussianBlur stdDeviation="4" result="coloredBlur" />
+                            <feMerge>
+                            <feMergeNode in="coloredBlur" />
+                            <feMergeNode in="SourceGraphic" />
+                            </feMerge>
+                        </filter>
+
+                        {/* Inner shadow (fake 3D effect) */}
+                        <filter id="inset-shadow" x="-50%" y="-50%" width="200%" height="200%">
+                            <feOffset dx="1" dy="1" />
+                            <feGaussianBlur stdDeviation="1.5" result="offset-blur" />
+                            <feComposite operator="out" in="SourceGraphic" in2="offset-blur" result="inverse" />
+                            <feFlood floodColor="#000" floodOpacity="0.4" result="color" />
+                            <feComposite operator="in" in="color" in2="inverse" result="shadow" />
+                            <feComposite operator="over" in="shadow" in2="SourceGraphic" />
+                        </filter>
+
+                        <filter id="shadow" x="-50%" y="-50%" width="200%" height="200%">
+                        <feDropShadow
+                            dx="1"
+                            dy="1"
+                            stdDeviation="2"
+                            floodColor="#000"
+                            floodOpacity="0.4"
+                        />
+                        </filter>
+
+                        <clipPath id="clip">
+                            <rect x="0" y="0" width="500" height="500" rx="5" ry="5" />
+                        </clipPath>
+
+                        <linearGradient id="grad1" x1="0%" y1="0%" x2="0%" y2="100%">
+                            <stop offset="0%" style={{ stopColor: "#00f", stopOpacity: 1 }} />
+                            <stop offset="100%" style={{ stopColor: "#0ff", stopOpacity: 1 }} />
+                        </linearGradient>
+
+                        <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+                            <feDropShadow dx="0" dy="0" stdDeviation="4" floodColor="cyan" />
+                        </filter>
+                    </defs>
+
+                    <image
+                        href="https://images.pexels.com/photos/963278/pexels-photo-963278.jpeg"
+                        x="0"
+                        y="0"
+                        width="500"
+                        height="500"
+                        preserveAspectRatio="xMidYMid slice"
+                        clipPath="url(#clip)"
+                    />
+
+                    <rect
+                        x="50"
+                        y="50"
+                        width="400"
+                        height="400"
+                        stroke="black"
+                        fill="none"
                         strokeWidth="2"
                     />
-                    <circle
-                        cx={x - 3}
-                        cy={y - 3}
-                        r="3"
-                        fill="white"
-                        opacity="0.5"
+                    
+                    <rect
+                        x="125"
+                        y="125"
+                        width="250"
+                        height="250"
+                        stroke="black"
+                        fill="none"
+                        strokeWidth="2"
                     />
-                    </>
-                )}
 
-                {/* ID Label */}
-                {/* <text
-                    x={x}
-                    y={y + 4} // +4 centers the text vertically
-                    textAnchor="middle"
-                    fontSize="10"
-                    opacity="0.1"
-                    fill="white"
-                >
-                    {id}
-                </text> */}
-                </g>
-            ))}
-            </svg>
-        </Grid>
+                    <rect
+                        x="200"
+                        y="200"
+                        width="100"
+                        height="100"
+                        stroke="black"
+                        fill="none"
+                        strokeWidth="2"
+                    />
 
-        <Grid
-            sx={{
-            flex: 1,
-            bgcolor: "#2a2a2a",
-            borderRadius: "10px",
-            p: 3,
-            color: "#fff",
-            }}
-        >
-            <Typography variant="h5" gutterBottom>
-            🎮 Game Stats
-            </Typography>
+                    <line
+                        x1="250"
+                        y1="50"
+                        x2="250"
+                        y2="200"
+                        stroke="black"
+                        strokeWidth="2"
+                    />
+                    
+                    <line
+                        x1="250"
+                        y1="300"
+                        x2="250"
+                        y2="450"
+                        stroke="black"
+                        strokeWidth="2"
+                    />
 
-            <Divider sx={{ borderColor: "#555", my: 2 }} />
+                    <line
+                        x1="50"
+                        y1="250"
+                        x2="200"
+                        y2="250"
+                        stroke="black"
+                        strokeWidth="2"
+                    />
 
-            <Grid container spacing={2}>
-                <Grid size={{ xs: 12, lg: 12 }}>
-                    <Typography variant="h6" sx={{ mt: 2 }}>
-                    GamePhase: {gamePhase}
-                    </Typography>
-                </Grid>
+                    <line
+                        x1="300"
+                        y1="250"
+                        x2="450"
+                        y2="250"
+                        stroke="black"
+                        strokeWidth="2"
+                    />
+                    {boardPoints.map(({ id, x, y }) => (
+                        <g key={id} onClick={() => handleClick(id)} style={{ cursor: "pointer" }}>
+                            {/* Empty point */}
+                            <circle
+                            cx={x}
+                            cy={y}
+                            r="15"
+                            fill="#000"
+                            stroke="#555"
+                            strokeWidth="1"
+                            />
 
-                <Grid size={{ xs: 12, lg: 6 }}>
-                    <Typography variant="subtitle1" color="red">
-                        🔴 Player X
-                    </Typography>
-                    <Typography variant="body2">
-                        Pieces Placed: {playerXAdds} / 9
-                        <br/>
-                        Pieces Moved: {playerXAdds} / 9
-                    </Typography>
-                </Grid><Grid size={{ xs: 12, lg: 6 }}>
-                    <Typography variant="subtitle1" color="skyblue">
-                        🔵 Player O
-                    </Typography>
-                    <Typography variant="body2">
-                        Pieces Placed: {playerOAdds} / 9
-                        <br/>
-                        Pieces Moved: {playerOAdds} / 9
-                    </Typography>
-                </Grid>
+                            {/* Filled piece */}
+                            {moves[id] && (
+                            <>
+                                <circle
+                                cx={x}
+                                cy={y}
+                                r="11"
+                                fill={`url(#${moves[id] === "X" ? "redGradient" : "blueGradient"})`}
+                                stroke={
+                                    selectedPieceIndex === id ? "#ffffff"  : currentRemover === moves[id] ? (() => {
+                                        const isInMill = mills.some(
+                                            (mill) =>
+                                            mill.includes(id) &&
+                                            mill.every((i) => moves[i] === moves[id])
+                                        );
+
+                                        const opponentPieces = moves.map((v, i) => ({ v, i })).filter(({ v }) => v === moves[id]);
+
+                                        const allInMill = opponentPieces.every(({ i }) => mills.some(
+                                            (mill) =>mill.includes(i) && mill.every((m) => moves[m] === moves[id]))
+                                        );
+
+                                        return !isInMill || allInMill ? "yellow" : undefined;
+                                        })()
+                                    : undefined
+                                }
+                                strokeWidth="2"
+                                filter={
+                                    selectedPieceIndex === id || currentRemover === moves[id]
+                                    ? "url(#glow)"
+                                    : "url(#inset-shadow)"
+                                }
+                                />
+
+                                {/* Highlight dot (specular reflection look) */}
+                                <circle
+                                cx={x - 3}
+                                cy={y - 3}
+                                r="3"
+                                fill="white"
+                                opacity="0.3"
+                                />
+                            </>
+                            )}
+                        </g>
+                    ))}
+                </svg>
             </Grid>
-
-            <Divider sx={{ borderColor: "#555", my: 3 }} />
-
-            <Typography variant="body1">
-            <strong>Current Turn:</strong>{" "}
-            {currentPlayer === "X" ? "🔴 Player X" : "🔵 Player O"}
-            </Typography>
-
-            <Typography variant="body2" sx={{ mt: 2 }}>
-            <em>
-                {currentRemover &&
-                `CurrentRemover: ${removalOpponent} needs to remove ${currentRemover}'s piece`}
-            </em>
-            <br />
-            CurrentPlayer: {currentPlayer}
-            <br />
-            removalOpponent: {removalOpponent}
-            <br />
-
-            CurrentRemover: {currentRemover}
-            </Typography>
+            <ToastContainer></ToastContainer>
         </Grid>
-        </Box>
     );
 }
